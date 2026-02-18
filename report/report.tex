@@ -17,9 +17,9 @@
 \title{Assignment 1: [Your Method Name]}
 
 \author{%
-  Your Name \\
+  Yanwei Wu \\
   Boston University \\
-  \texttt{your-email@bu.edu}
+  \texttt{wudaniel@bu.edu}
 }
 
 \begin{document}
@@ -27,43 +27,76 @@
 \maketitle
 
 \begin{abstract}
-A one-paragraph summary of your method, key results, and main takeaways.
+We propose Adaptive Preconditioned Mixture Sampling (APMS), a hybrid MCMC sampler that mixes preconditioned MALA and preconditioned random-walk proposals after a short diagonal-variance warmup. On Rosenbrock and Neal’s Funnel, APMS achieves acceptance rates close to HMC while improving over vanilla RWMH. An ablation study shows that mixing gradient-informed and random-walk updates improves robustness in hierarchical targets.
 \end{abstract}
 
 \section{Introduction}
 
-What is your method and why did you design it this way? What problem or limitation of existing methods does it address?
+Designing Markov chain Monte Carlo (MCMC) samplers that work across diverse geometries is challenging: random-walk Metropolis--Hastings (RWMH) can mix poorly on strongly correlated targets, while Hamiltonian Monte Carlo (HMC) can be effective but is more complex to tune. We propose \textbf{Adaptive Preconditioned Mixture Sampling (APMS)}, a minimal hybrid sampler that mixes preconditioned Metropolis-adjusted Langevin dynamics (MALA) and preconditioned random-walk moves. A short warmup estimates a diagonal preconditioner; afterward, sampling uses fixed mixture weights to balance local efficiency and robustness.
 
-% Your content here
 
 \section{Method}
 
-Technical description of your algorithm. Include pseudocode if helpful.
+APMS has two stages: (i) warmup to estimate a diagonal scale and (ii) sampling using a mixture of two reversible kernels.
+\paragraph{Warmup (diagonal preconditioning).}
+Coordinate-wise variances are estimated online (Welford). After warmup, we fix
+\[
+\Sigma = \mathrm{diag}(\hat{\sigma}^2).
+\]
+\paragraph{Mixture transition.}
+With probability $p_{\text{mala}}$, use preconditioned MALA:
+\[
+x' = x + \frac{\epsilon^2}{2}\Sigma\nabla \log p(x) + \epsilon \Sigma^{1/2} z,\quad z\sim\mathcal N(0,I),
+\]
+followed by Metropolis correction. Otherwise, use a preconditioned random walk:
+\[
+x' = x + s\,\Sigma^{1/2} z,
+\]
+with symmetric acceptance. Warmup samples are discarded; after warmup the chain is time-homogeneous and the mixture preserves the target since each component kernel satisfies detailed balance.
 
-% Your content here
+\paragraph{Practical settings.}
+In our experiments, we use a fixed mixture weight $p_{\text{mala}}$ and tune $(\epsilon,s)$ to obtain stable acceptance rates. The diagonal preconditioner reduces sensitivity to the absolute scale of each coordinate, making tuning more consistent across targets. Intuitively, the MALA component provides efficient local moves along smooth directions, while the random-walk component acts as a ``fallback'' when gradients vary sharply (e.g., in funnel-like regions).
+
+\paragraph{Practical settings.}
+In our experiments, we use a fixed mixture weight $p_{\text{mala}}$ and tune $(\epsilon,s)$ to obtain stable acceptance rates. The diagonal preconditioner reduces sensitivity to the absolute scale of each coordinate, making tuning more consistent across targets. Intuitively, the MALA component provides efficient local moves along smooth directions, while the random-walk component acts as a ``fallback'' when gradients vary sharply (e.g., in funnel-like regions).
+
 
 \section{Experiments}
 
-Results on both benchmarks. Include visualizations (samples, traces) and quantitative diagnostics (ESS, acceptance rates). Compare to vanilla MH and HMC baselines.
+We evaluate APMS on Rosenbrock and Neal’s Funnel, with baselines RWMH and HMC. Each experiment uses 50{,}000 samples with 5{,}000 warmup iterations (discarded). We report acceptance rates and qualitative diagnostics (traces/autocorrelation/ESS; single-chain ESS is interpreted cautiously).
 
-% Your content here
-% Tip: Use \includegraphics to add figures from your notebook
+\subsection{Rosenbrock}
+
+On the Rosenbrock distribution, acceptance rates are 50.02\% for RWMH, 74.78\% for HMC, and 72.89\% for APMS. APMS closely matches HMC in acceptance while substantially outperforming RWMH.
+
+Qualitatively, APMS follows the curved manifold more effectively than RWMH and approaches HMC in mixing behavior. The diagonal preconditioner is particularly helpful here because the target is anisotropic and curved; without rescaling, RWMH requires very small steps to maintain reasonable acceptance.
+
+\subsection{Neal’s Funnel}
+
+On Neal’s Funnel, acceptance rates are 37.75\% for RWMH, 78.40\% for HMC, and 73.60\% for APMS. RWMH struggles to traverse the narrow funnel neck and fails to adequately explore wide regions of the distribution. Both HMC and APMS successfully capture the hierarchical structure, with APMS achieving acceptance close to HMC while using substantially simpler dynamics.
+
+Compared with a pure gradient-based kernel, the mixture is more tolerant to regions where gradients change rapidly across scales. In practice we observed that including random-walk updates reduced the tendency of MALA-only sampling to take overly conservative steps (high acceptance but poor global movement).
+
+Compared with a pure gradient-based kernel, the mixture is more tolerant to regions where gradients change rapidly across scales. In practice we observed that including random-walk updates reduced the tendency of MALA-only sampling to take overly conservative steps (high acceptance but poor global movement).
+
+\subsection{Ablation Study}
+
+To understand the contribution of each component, we evaluate variants using only random-walk proposals, only MALA proposals, an equal mixture, and the full APMS configuration.
+
+Only random-walk sampling exhibits low acceptance (25.75\%) and poor robustness in the funnel geometry. Only MALA achieves extremely high acceptance (98.65\%) but very low effective sample size, indicating small-step behavior and poor global mixing. Mixture configurations provide the best balance between stability and exploration. These results confirm that combining gradient-informed and stochastic moves improves robustness in hierarchical targets.
 
 \section{Discussion}
 
-Where does your method work well? Where does it struggle? What would you try next?
+APMS suggests that diagonal preconditioning plus mixing can improve robustness over vanilla random-walk MCMC.
+\paragraph{Strengths.} Simple to implement; competitive acceptance vs.\ HMC without leapfrog or trajectory tuning.
+\paragraph{Limitations.} Diagonal scaling misses correlations; gradients can still be unstable in extreme funnel regions; may lag well-tuned HMC on smooth targets.
+\paragraph{Future work.} Richer preconditioners, adaptive mixture weights, and multi-chain diagnostics.
 
-% Your content here
 
 \section{AI Collaboration}
 
-Reflect on your use of AI assistants:
-\begin{itemize}
-    \item Which AI tools did you use and for what purposes? Through what interfaces (e.g., chat, code completion, coding agents, $\ldots$)?
-    \item What prompting strategies were effective? What kind of context or instructions helped?
-    \item Where did the AI provide useful ideas vs.\ where did you need to correct or guide it?
-    \item What did you learn about working with AI on technical problems?
-\end{itemize}
+ChatGPT was used for brainstorming sampler designs, clarifying properties (e.g., detailed balance), and assisting with JAX implementation. Targeted technical prompts worked better than open-ended ones. Asking for failure modes motivated the mixture design (MALA instability in funnel geometries). Acceptance ratios, adaptation logic, and interpretation were manually verified.
+
 
 % Your content here
 
